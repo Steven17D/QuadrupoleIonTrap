@@ -1,20 +1,8 @@
+import abc
 import dataclasses
 
 import matplotlib.pyplot as plt
 import numpy as np
-
-
-@dataclasses.dataclass
-class Field:
-    def __init__(self, A2: float, omega: float):
-        self.omega = omega
-        self.A2 = A2
-
-    def at(self, t, position: np.array):
-        x, y = position
-        coefficient = 2 * self.A2 * np.cos(self.omega * t)
-        # return coefficient * np.array([(-1) * y, -x])
-        return coefficient * np.array([(-1) * x, y])
 
 
 @dataclasses.dataclass
@@ -25,35 +13,74 @@ class Particle:
     position: np.array
 
 
-def simulate(field: Field, particle: Particle, gamma: float, dt: float, duration: float, ax):
-    iterations = int(duration / dt)
-    x = np.empty([iterations])
-    y = np.empty_like(x)
-    t = 0
-    g = 9.8
-    E0 = 5000
-    # gravitational_force = g * particle.mass * np.array([0., -1.])
-    # electrostatic_force = E0 * particle.charge * np.array([0., 1.])
-    ax.scatter(*particle.position, marker='x')
-    for i in range(iterations):
-        field_force = field.at(t, particle.position) * particle.charge
-        drag_force = - (gamma * particle.mass) * particle.velocity
-        total_force = field_force + drag_force  # + gravitational_force + electrostatic_force
-        acceleration = total_force / particle.mass
-        particle.velocity += acceleration * dt
-        particle.position += particle.velocity * dt
-        x[i], y[i] = particle.position
-        t += dt
-    ax.scatter(*particle.position, marker='x')
-    ax.plot(x, y)
+class Force(abc.ABC):
+    @abc.abstractmethod
+    def at(self, particle: Particle, time: float) -> np.array:
+        pass
 
 
-def visualize(field: Field, ax):
-    X = np.arange(*ax.get_xlim(), (max(ax.get_xlim()) - min(ax.get_xlim())) / 10)
-    Y = np.arange(*ax.get_ylim(), (max(ax.get_ylim()) - min(ax.get_ylim())) / 10)
-    U, V = np.meshgrid(X, Y)
-    Ex, Ey = field.at(0, (U, V))
-    ax.quiver(X, Y, Ex, -Ey)  # Note: quiver reverses y direction.
+class ElectricForce(Force):
+    def __init__(self, A2: float, omega: float):
+        self.omega = omega
+        self.A2 = A2
+
+    def at(self, particle: Particle, time: float):
+        x, y = particle.position
+        coefficient = 2 * self.A2 * np.cos(self.omega * time)
+        return coefficient * np.array([(-1) * x, y]) * particle.charge
+
+
+class DragForce(Force):
+    def __init__(self, gamma: float):
+        self.gamma = gamma
+
+    def at(self, particle: Particle, time: float):
+        return - (self.gamma * particle.mass) * particle.velocity
+
+
+class GravitationalForce(Force):
+    def __init__(self, g: float):
+        self.g = g
+
+    def at(self, particle: Particle, time: float):
+        return self.g * particle.mass * np.array([0., -1.])
+
+
+class ElectrostaticForce(Force):
+    def __init__(self, E0: float):
+        self.E0 = E0
+
+    def at(self, particle: Particle, time: float):
+        return self.E0 * particle.charge * np.array([0., 1.])
+
+
+class Simulation:
+    def __init__(self, particle: Particle, forces: list[Force]):
+        self.particle = particle
+        self.forces = forces
+
+    def simulate(self, dt: float, duration: float, ax):
+        iterations = int(duration / dt)
+        x = np.empty([iterations])
+        y = np.empty_like(x)
+        t = 0
+        ax.scatter(*self.particle.position, marker='x')
+        for i in range(iterations):
+            total_force = sum(map(lambda force: force.at(self.particle, t), self.forces))
+            acceleration = total_force / self.particle.mass
+            self.particle.velocity += acceleration * dt
+            self.particle.position += self.particle.velocity * dt
+            x[i], y[i] = self.particle.position
+            t += dt
+        ax.scatter(*self.particle.position, marker='x')
+        ax.plot(x, y)
+
+    def visualize(self, field: Force, ax):
+        X = np.arange(*ax.get_xlim(), (max(ax.get_xlim()) - min(ax.get_xlim())) / 10)
+        Y = np.arange(*ax.get_ylim(), (max(ax.get_ylim()) - min(ax.get_ylim())) / 10)
+        U, V = np.meshgrid(X, Y)
+        Ex, Ey = field.at(Particle(0, self.particle.charge, 0, (U, V)), 0)
+        ax.quiver(X, Y, Ex, -Ey)  # Note: quiver reverses y direction.
 
 
 def calculate_particle_mass():
@@ -64,7 +91,7 @@ def calculate_particle_mass():
     """
     DENSITY = 510  # 510+-40 kg/m^3
     RADIUS = 26e-6  # 26+-2.5 um
-    volume = (4/3.0) * np.pi * RADIUS**3
+    volume = (4 / 3.0) * np.pi * RADIUS ** 3
     mass = DENSITY * volume
     return mass
 
@@ -83,11 +110,16 @@ def main():
     # spacing between the trap electrodes. We will assume 1 cm which is 0.01 m.
     # Zeff = 0.0079192
     Zeff = 0.01 * 0.15
-    A2 = (Vac / Zeff**2) / (-4)
-    field = Field(A2, omega)
+    A2 = (Vac / Zeff ** 2) / (-4)
+    forces = [
+        ElectricForce(A2, omega),
+        DragForce(gamma),
+        # GravitationalForce(g=9.8),
+        # ElectrostaticForce(E0=5000)
+    ]
     particle = Particle(pollen_mass, pollen_charge, initial_velocity, initial_position)
 
-    if Vac < (particle.mass * omega * gamma * Zeff**2 / particle.charge):
+    if Vac < (particle.mass * omega * gamma * Zeff ** 2 / particle.charge):
         print("System is stable")
     else:
         print("System is not stable")
@@ -96,8 +128,9 @@ def main():
     ax.set_xlim(-trap_size, trap_size)
     ax.set_ylim(-trap_size, trap_size)
 
-    simulate(field, particle, gamma, 0.00005, 1, ax)
-    visualize(field, ax)
+    simulation = Simulation(particle, forces)
+    simulation.simulate(0.00005, 1, ax)
+    simulation.visualize(ElectricForce(A2, omega), ax)
 
     ax.set_xlabel("x")
     ax.set_ylabel("y")
