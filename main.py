@@ -77,7 +77,6 @@ class Simulation:
             if writer is not None and (i % (iterations // (writer.fps * time_factor))) == 0:
                 p.set_data(x[:i], y[:i])
                 writer.grab_frame()
-                print(f'{i}/{iterations}')
         p.set_data(x, y)
         ax.scatter(*self.particle.position, marker='x')
 
@@ -103,18 +102,17 @@ def calculate_particle_mass():
 
 
 def main():
-    initial_position = np.array([-0.003, 0.000])  # Trap size is no the order of 1 cm (0.01 m)
-    initial_velocity = np.array([0.0, -0.1])
+    initial_position = np.array([-0.003, 0.003])  # Trap size is no the order of 1 cm (0.01 m)
+    initial_velocity = np.array([-0.2, -0.1])
     pollen_mass = calculate_particle_mass()
-    pollen_charge = 1e-14  # 7.359e-15 derived from q = g*m/E0, our calculation resulted in 5.11e-15
+    pollen_charge = 2e-14  # 7.359e-15 derived from q = g*m/E0, our calculation resulted in 5.11e-15
     Vac_frequency = 50.0  # 50 Hz from outlet
     omega = 2 * np.pi * Vac_frequency
     Vac = 3000  # 0-6 kV
-    gamma = 1620  # 1620 Hz From IonTrapPhysics pdf
+    gamma = 0.02 * 1620  # 1620 Hz From IonTrapPhysics pdf
     # Zeff is a constant that depends on the geometry of the trap, and we expect it's value to be comparable to the
     # spacing between the trap electrodes. We will assume 1 cm which is 0.01 m.
-    # Zeff = 0.0079192
-    Zeff = 0.01 * 0.3
+    Zeff = 0.01 * 0.5
     A2 = (Vac / Zeff ** 2) / (-4)
     forces = [
         ElectricForce(A2, omega),
@@ -130,7 +128,9 @@ def main():
         print("System is not stable")
 
     fig, ax = plt.subplots()
-    trap_size = 0.05
+    plt.title(fr"$V_{{ac}} = {Vac}, \Gamma = {gamma}, Z_{{eff}} = {Zeff}, \omega=2\pi/{Vac_frequency}$")
+
+    trap_size = 0.01
     ax.set_xlim(-trap_size, trap_size)
     ax.set_ylim(-trap_size, trap_size)
 
@@ -141,7 +141,7 @@ def main():
         writer = FFMpegWriter(fps=60, metadata=metadata)
         with writer.saving(fig, 'Movie.mp4', 100):
             simulation.visualize_field(ElectricForce(A2, omega), ax)
-            simulation.simulate(0.00005, 1, ax, writer)
+            simulation.simulate(0.00005, 2, ax, writer, time_factor=2)
             writer.grab_frame()
     else:
         simulation.simulate(0.00005, 1, ax)
