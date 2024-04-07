@@ -3,6 +3,7 @@ import dataclasses
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.animation import FFMpegWriter
 
 
 @dataclasses.dataclass
@@ -59,12 +60,13 @@ class Simulation:
         self.particle = particle
         self.forces = forces
 
-    def simulate(self, dt: float, duration: float, ax):
+    def simulate(self, dt: float, duration: float, ax, writer: FFMpegWriter = None, time_factor: int = 2):
         iterations = int(duration / dt)
         x = np.empty([iterations])
         y = np.empty_like(x)
         t = 0
         ax.scatter(*self.particle.position, marker='x')
+        p, = plt.plot([], [])
         for i in range(iterations):
             total_force = sum(map(lambda force: force.at(self.particle, t), self.forces))
             acceleration = total_force / self.particle.mass
@@ -72,15 +74,19 @@ class Simulation:
             self.particle.position += self.particle.velocity * dt
             x[i], y[i] = self.particle.position
             t += dt
+            if writer is not None and (i % (iterations // (writer.fps * time_factor))) == 0:
+                p.set_data(x[:i], y[:i])
+                writer.grab_frame()
+                print(f'{i}/{iterations}')
+        p.set_data(x, y)
         ax.scatter(*self.particle.position, marker='x')
-        ax.plot(x, y)
 
-    def visualize(self, field: Force, ax):
+    def visualize_field(self, field: Force, ax, time: float = 0):
         X = np.arange(*ax.get_xlim(), (max(ax.get_xlim()) - min(ax.get_xlim())) / 10)
         Y = np.arange(*ax.get_ylim(), (max(ax.get_ylim()) - min(ax.get_ylim())) / 10)
         U, V = np.meshgrid(X, Y)
         Ex, Ey = field.at(Particle(0, self.particle.charge, 0, (U, V)), 0)
-        ax.quiver(X, Y, Ex, -Ey)  # Note: quiver reverses y direction.
+        ax.quiver(X, Y, Ex, Ey)  # Note: quiver reverses y direction.
 
 
 def calculate_particle_mass():
@@ -97,41 +103,50 @@ def calculate_particle_mass():
 
 
 def main():
-    trap_size = 0.01
-    initial_position = np.array([-0.01, 0.005])  # Trap size is no the order of 1 cm (0.01 m)
-    initial_velocity = np.array([0.0, -0.0])
+    initial_position = np.array([-0.003, 0.000])  # Trap size is no the order of 1 cm (0.01 m)
+    initial_velocity = np.array([0.0, -0.1])
     pollen_mass = calculate_particle_mass()
     pollen_charge = 1e-14  # 7.359e-15 derived from q = g*m/E0, our calculation resulted in 5.11e-15
     Vac_frequency = 50.0  # 50 Hz from outlet
     omega = 2 * np.pi * Vac_frequency
-    Vac = 6000  # 0-6 kV
+    Vac = 3000  # 0-6 kV
     gamma = 1620  # 1620 Hz From IonTrapPhysics pdf
     # Zeff is a constant that depends on the geometry of the trap, and we expect it's value to be comparable to the
     # spacing between the trap electrodes. We will assume 1 cm which is 0.01 m.
     # Zeff = 0.0079192
-    Zeff = 0.01 * 0.15
+    Zeff = 0.01 * 0.3
     A2 = (Vac / Zeff ** 2) / (-4)
     forces = [
         ElectricForce(A2, omega),
-        DragForce(gamma),
+        # DragForce(gamma),
         # GravitationalForce(g=9.8),
         # ElectrostaticForce(E0=5000)
     ]
     particle = Particle(pollen_mass, pollen_charge, initial_velocity, initial_position)
 
-    if Vac < (particle.mass * omega * gamma * Zeff ** 2 / particle.charge):
+    if Vac < (particle.mass * omega * gamma * (Zeff ** 2) / particle.charge):
         print("System is stable")
     else:
         print("System is not stable")
 
     fig, ax = plt.subplots()
+    trap_size = 0.05
     ax.set_xlim(-trap_size, trap_size)
     ax.set_ylim(-trap_size, trap_size)
 
     simulation = Simulation(particle, forces)
-    simulation.simulate(0.00005, 1, ax)
-    simulation.visualize(ElectricForce(A2, omega), ax)
+    record = True
+    if record:
+        metadata = dict(title='Movie', artist='codinglikemad')
+        writer = FFMpegWriter(fps=60, metadata=metadata)
+        with writer.saving(fig, 'Movie.mp4', 100):
+            simulation.visualize_field(ElectricForce(A2, omega), ax)
+            simulation.simulate(0.00005, 1, ax, writer)
+            writer.grab_frame()
+    else:
+        simulation.simulate(0.00005, 1, ax)
 
+    simulation.visualize_field(ElectricForce(A2, omega), ax)
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     plt.show()
