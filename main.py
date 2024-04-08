@@ -108,7 +108,7 @@ def create_simulation(ax,
                       E0: float = 5000.,
                       x0: float = -0.003,
                       y0: float = 0.003,
-                      vx0: float = -0.2,
+                      vx0: float = -0.1,
                       vy0: float = -0.1
 ):
     initial_position = np.array([x0, y0])
@@ -143,6 +143,8 @@ def main():
     frequency_axes = fig.add_axes([0.25, 0.09, 0.65, 0.03])
     g_axes = fig.add_axes([0.25, 0.12, 0.65, 0.03])
     E0_axes = fig.add_axes([0.25, 0.15, 0.65, 0.03])
+    vx0_axes = fig.add_axes([0.25, 0.21, 0.25, 0.03])
+    vy0_axes = fig.add_axes([0.65, 0.21, 0.25, 0.03])
     x0_axes = fig.add_axes([0.25, 0.18, 0.25, 0.03])
     y0_axes = fig.add_axes([0.65, 0.18, 0.25, 0.03])
     simulation = create_simulation(ax)
@@ -165,6 +167,8 @@ def main():
         E0_slider = Slider(E0_axes, r'$E_0$', 0, 10000, valinit=5000, valstep=1000)
         x0_slider = Slider(x0_axes, r'$x_0$', -0.01, 0.01, valinit=-0.003, valstep=0.001)
         y0_slider = Slider(y0_axes, r'$y_0$', -0.01, 0.01, valinit=0.003, valstep=0.001)
+        vx0_slider = Slider(vx0_axes, r'$vx_0$', -0.5, 0.5, valinit=-0.01, valstep=0.001)
+        vy0_slider = Slider(vy0_axes, r'$vy_0$', -0.5, 0.5, valinit=-0.01, valstep=0.001)
         configuration = dict()
 
         def update(name: str, value):
@@ -181,6 +185,8 @@ def main():
         E0_slider.on_changed(lambda val: update("E0", val))
         x0_slider.on_changed(lambda val: update("x0", val))
         y0_slider.on_changed(lambda val: update("y0", val))
+        vx0_slider.on_changed(lambda val: update("vx0", val))
+        vy0_slider.on_changed(lambda val: update("vy0", val))
 
     ax.set_xlabel("x")
     ax.set_ylabel("y")
