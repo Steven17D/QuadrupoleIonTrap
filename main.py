@@ -93,7 +93,7 @@ def calculate_particle_mass():
     :return:
     """
     DENSITY = 510  # 510+-40 kg/m^3
-    RADIUS = 26e-6  # 26+-2.5 um
+    RADIUS = 26e-6 / 2.0  # The diameter 26+-2.5 um
     volume = (4 / 3.0) * np.pi * RADIUS ** 3
     mass = DENSITY * volume
     return mass
@@ -127,14 +127,14 @@ def create_simulation(ax,
         print("System is not stable")
     simulation = Simulation(particle, forces)
     simulation.visualize_field(ElectricForce(A2, omega), ax)
-    plt.suptitle(fr"$V_{{ac}} = {Vac}, \Gamma = {gamma}, Z_{{eff}} = {Zeff}, \omega=2\pi/{Vac_frequency}$")
+    plt.suptitle(fr"$V_{{ac}} = {Vac}V, \Gamma = {gamma} Hz, Z_{{eff}} = {Zeff} m, \omega=2\pi*{Vac_frequency} Hz$")
     return simulation
 
 
 def main():
     fig = plt.figure(figsize=(6, 6))
     ax = fig.add_axes([0.2, 0.3, 0.75, 0.60])
-    trap_size = 0.01
+    trap_size = 0.02
     ax.set_xlim(-trap_size, trap_size)
     ax.set_ylim(-trap_size, trap_size)
     Vac_axes = fig.add_axes([0.25, 0, 0.65, 0.03])
