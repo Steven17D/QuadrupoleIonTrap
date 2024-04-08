@@ -78,11 +78,11 @@ class Simulation:
                 writer.grab_frame()
         plot.set_data(x, y)
 
-    def visualize_field(self, field: Force, ax, time: float = 0):
-        X = np.arange(*ax.get_xlim(), (max(ax.get_xlim()) - min(ax.get_xlim())) / 10)  # TODO: Use linspace
-        Y = np.arange(*ax.get_ylim(), (max(ax.get_ylim()) - min(ax.get_ylim())) / 10)
+    def visualize_field(self, field: Force, ax, t: float = 0):
+        X = np.linspace(*ax.get_xlim(), 9)
+        Y = np.linspace(*ax.get_ylim(), 9)
         U, V = np.meshgrid(X, Y)
-        Ex, Ey = field.at(Particle(0, self.particle.charge, 0, (U, V)), 0)
+        Ex, Ey = field.at(Particle(t, self.particle.charge, 0, (U, V)), 0)
         ax.quiver(X, Y, Ex, Ey)  # Note: quiver reverses y direction.
 
 
@@ -99,18 +99,55 @@ def calculate_particle_mass():
     return mass
 
 
+def create_simulation(ax,
+                      Vac: float = 3000,  # 0-6 kV
+                      gamma: float = 0,  # 1620 Hz From IonTrapPhysics pdf
+                      Zeff: float = 0.005,
+                      Vac_frequency: float = 50.0,  # 50 Hz from outlet
+                      g: float = 9.8,
+                      E0: float = 5000.,
+                      x0: float = -0.003,
+                      y0: float = 0.003,
+                      vx0: float = -0.2,
+                      vy0: float = -0.1
+):
+    initial_position = np.array([x0, y0])
+    initial_velocity = np.array([vx0, vy0])
+    pollen_mass = calculate_particle_mass()
+    pollen_charge = 2e-14  # 7.359e-15 derived from q = g*m/E0, our calculation resulted in 5.11e-15
+    # Zeff is a constant that depends on the geometry of the trap, and we expect it's value to be comparable to the
+    # spacing between the trap electrodes. We will assume 1 cm which is 0.01 m.
+    omega = 2 * np.pi * Vac_frequency
+    A2 = (Vac / Zeff ** 2) / (-4)
+    forces = [ElectricForce(A2, omega), DragForce(gamma), ElectrostaticForce(E0), GravitationalForce(g)]
+    particle = Particle(pollen_mass, pollen_charge, initial_velocity, initial_position)
+    if Vac < (particle.mass * omega * gamma * (Zeff ** 2) / particle.charge):
+        print("System is stable")
+    else:
+        print("System is not stable")
+    simulation = Simulation(particle, forces)
+    simulation.visualize_field(ElectricForce(A2, omega), ax)
+    plt.suptitle(fr"$V_{{ac}} = {Vac}, \Gamma = {gamma}, Z_{{eff}} = {Zeff}, \omega=2\pi/{Vac_frequency}$")
+    return simulation
+
+
 def main():
-    simulation, A2, Vac, omega = create_simulation()
-
-    fig, ax = plt.subplots()
-    # plt.title(fr"$V_{{ac}} = {Vac}, \Gamma = {gamma}, Z_{{eff}} = {Zeff}, \omega=2\pi/{Vac_frequency}$")
-
+    fig = plt.figure(figsize=(6, 6))
+    ax = fig.add_axes([0.2, 0.3, 0.75, 0.60])
     trap_size = 0.01
     ax.set_xlim(-trap_size, trap_size)
     ax.set_ylim(-trap_size, trap_size)
+    Vac_axes = fig.add_axes([0.25, 0, 0.65, 0.03])
+    Zeff_axes = fig.add_axes([0.25, 0.03, 0.65, 0.03])
+    gamam_axes = fig.add_axes([0.25, 0.06, 0.65, 0.03])
+    frequency_axes = fig.add_axes([0.25, 0.09, 0.65, 0.03])
+    g_axes = fig.add_axes([0.25, 0.12, 0.65, 0.03])
+    E0_axes = fig.add_axes([0.25, 0.15, 0.65, 0.03])
+    x0_axes = fig.add_axes([0.25, 0.18, 0.25, 0.03])
+    y0_axes = fig.add_axes([0.65, 0.18, 0.25, 0.03])
+    simulation = create_simulation(ax)
 
-    simulation.visualize_field(ElectricForce(A2, omega), ax)
-    plot, = plt.plot([], [])
+    plot, = ax.plot([], [])
     record = False
     if record:
         metadata = dict(title='Movie', artist='codinglikemad')
@@ -120,49 +157,34 @@ def main():
             writer.grab_frame()
     else:
         simulation.simulate(0.00005, 1, plot)
-        Vac_slider = Slider(plt.axes([0.25, 0, 0.65, 0.03]), '$V_{ac}$', 0, 6000, valinit=Vac, valstep=200)
+        Vac_slider = Slider(Vac_axes, '$V_{ac}$', 0, 6000, valinit=3000, valstep=200)
+        Zeff_slider = Slider(Zeff_axes, '$Z_{eff}$', 0, 0.02, valinit=0.01 * 0.5, valstep=0.001)
+        gamma_slider = Slider(gamam_axes, r'$\Gamma$', 0, 2000, valinit=0, valstep=10)
+        frequency_slider = Slider(frequency_axes, r'$V_{ac} frequency$', 0, 100, valinit=50, valstep=10)
+        g_slider = Slider(g_axes, r'$g$', 0, 15, valinit=9.8, valstep=0.1)
+        E0_slider = Slider(E0_axes, r'$E_0$', 0, 10000, valinit=5000, valstep=1000)
+        x0_slider = Slider(x0_axes, r'$x_0$', -0.01, 0.01, valinit=-0.003, valstep=0.001)
+        y0_slider = Slider(y0_axes, r'$y_0$', -0.01, 0.01, valinit=0.003, valstep=0.001)
+        configuration = dict()
 
-        def update_Vac(val):
-            print("A")
-            simulation, A2, Vac, omega = create_simulation(Vac=val)
+        def update(name: str, value):
+            configuration[name] = value
+            simulation = create_simulation(ax, **configuration)
             simulation.simulate(0.00005, 1, plot)
-            print("B")
             fig.canvas.draw_idle()
-            print("C")
 
-        Vac_slider.on_changed(update_Vac)
+        Vac_slider.on_changed(lambda val: update("Vac", val))
+        Zeff_slider.on_changed(lambda val: update("Zeff", val))
+        gamma_slider.on_changed(lambda val: update("gamma", val))
+        frequency_slider.on_changed(lambda val: update("Vac_frequency", val))
+        g_slider.on_changed(lambda val: update("g", val))
+        E0_slider.on_changed(lambda val: update("E0", val))
+        x0_slider.on_changed(lambda val: update("x0", val))
+        y0_slider.on_changed(lambda val: update("y0", val))
 
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     plt.show()
-
-
-def create_simulation(Vac: float = 3000):
-    initial_position = np.array([-0.003, 0.003])  # Trap size is no the order of 1 cm (0.01 m)
-    initial_velocity = np.array([-0.2, -0.1])
-    pollen_mass = calculate_particle_mass()
-    pollen_charge = 2e-14  # 7.359e-15 derived from q = g*m/E0, our calculation resulted in 5.11e-15
-    Vac_frequency = 50.0  # 50 Hz from outlet
-    omega = 2 * np.pi * Vac_frequency
-    # Vac = 3000  # 0-6 kV
-    gamma = 0.02 * 1620  # 1620 Hz From IonTrapPhysics pdf
-    # Zeff is a constant that depends on the geometry of the trap, and we expect it's value to be comparable to the
-    # spacing between the trap electrodes. We will assume 1 cm which is 0.01 m.
-    Zeff = 0.01 * 0.5
-    A2 = (Vac / Zeff ** 2) / (-4)
-    forces = [
-        ElectricForce(A2, omega),
-        DragForce(gamma),
-        GravitationalForce(g=9.8),
-        ElectrostaticForce(E0=5000)
-    ]
-    particle = Particle(pollen_mass, pollen_charge, initial_velocity, initial_position)
-    if Vac < (particle.mass * omega * gamma * (Zeff ** 2) / particle.charge):
-        print("System is stable")
-    else:
-        print("System is not stable")
-    simulation = Simulation(particle, forces)
-    return simulation, A2, Vac, omega
 
 
 if __name__ == '__main__':
